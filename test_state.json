@@ -1,0 +1,11 @@
+{
+    "creator_id": "user_ce29a1ba-b4f5-4095-97b0-20a7dff01673",
+    "pool_id": "b6dfc474-09e3-4cd8-8a96-4b649eb08b96",
+    "last_step": "validate_drops",
+    "stream_id": "7e20fcd7-ac49-4c46-a381-502173267405",
+    "drop_ids": [
+        "ceb19943-7dce-40d0-96f7-4a6fffa3e913",
+        "1714c0dc-13e3-433c-afec-ff981c7886b7",
+        "5b652716-a082-4794-a120-c666690cf8f8"
+    ]
+}

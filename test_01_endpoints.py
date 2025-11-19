@@ -7,9 +7,23 @@ from datetime import datetime
 import requests
 
 # --- Configuration ---
-BASE_URL = "http://localhost:8000"
-API_V1_URL = f"{BASE_URL}/api/v1"
+URLS = {
+    "test": "http://localhost:8000",
+    "live": "https://wisdom-pool-server-3473lz5ika-nw.a.run.app",
+}
 STATE_FILE = "test_state.json"
+
+# These will be set based on the environment
+BASE_URL = ""
+API_V1_URL = ""
+
+
+def set_environment(env="test"):
+    """Sets the global URLs based on the chosen environment."""
+    global BASE_URL, API_V1_URL
+    BASE_URL = URLS.get(env, URLS["test"])
+    API_V1_URL = f"{BASE_URL}/api/v1"
+    print(f"--- Running tests against {env.upper()} environment: {BASE_URL} ---\n")
 
 
 def save_state(data):
@@ -69,14 +83,17 @@ def test_full_workflow():
     drop_ids = state.get("drop_ids", [])
     last_step = state.get("last_step", "")
     creator_id = state.get("creator_id", generate_creator_id())
+    user_id = state.get("user_id", generate_creator_id())
 
     # If starting a fresh run, clear the logs on the server
     if not state:
         clear_server_logs()
 
-    # Always save the creator_id
+    # Always save the creator_id and user_id
     if "creator_id" not in state:
         state["creator_id"] = creator_id
+    if "user_id" not in state:
+        state["user_id"] = user_id
         save_state(state)
 
     try:
@@ -173,6 +190,84 @@ def test_full_workflow():
             save_state(state)
             print("All drops validated.\n")
 
+        # Step 4: Test User Progress Endpoints
+        if last_step != "test_user_progress":
+            print("--- 7. Testing user progress endpoints ---")
+            
+            # First, get session sync (should have no history initially)
+            print("Getting initial session sync...")
+            response = requests.get(
+                f"{API_V1_URL}/user/session-sync",
+                headers={"X-User-Id": user_id}
+            )
+            response.raise_for_status()
+            session_data = response.json()
+            print(f"Session sync response: {session_data}")
+            
+            # Update user progress
+            print("Updating user progress...")
+            progress_data = {
+                "pool_id": pool_id,
+                "stream_id": stream_id,
+                "drop_id": drop_ids[1] if len(drop_ids) > 1 else drop_ids[0],
+                "placement_id": "test_placement_id"
+            }
+            response = requests.post(
+                f"{API_V1_URL}/user/progress",
+                json=progress_data,
+                headers={"X-User-Id": user_id}
+            )
+            response.raise_for_status()
+            print("User progress updated successfully.")
+            
+            # Get session sync again (should now have history)
+            print("Getting updated session sync...")
+            response = requests.get(
+                f"{API_V1_URL}/user/session-sync",
+                headers={"X-User-Id": user_id}
+            )
+            response.raise_for_status()
+            updated_session = response.json()
+            print(f"Updated session sync: {updated_session}")
+            
+            state.update({"last_step": "test_user_progress"})
+            save_state(state)
+            print("User progress tests completed.\n")
+
+        # Step 5: Test River Feed
+        if last_step != "test_river_feed":
+            print("--- 8. Testing river feed endpoint ---")
+            response = requests.get(
+                f"{API_V1_URL}/pools/{pool_id}/river",
+                headers={"X-User-Id": user_id},
+                params={"limit": 10}
+            )
+            response.raise_for_status()
+            river_data = response.json()
+            print(f"River feed returned {len(river_data.get('streams', []))} streams")
+            print(f"River feed response: {river_data}")
+            
+            state.update({"last_step": "test_river_feed"})
+            save_state(state)
+            print("River feed test completed.\n")
+
+        # Step 6: Test Get Drops in Stream
+        if last_step != "test_get_drops":
+            print("--- 9. Testing get drops in stream endpoint ---")
+            response = requests.get(
+                f"{API_V1_URL}/streams/{stream_id}/drops",
+                params={"limit": 10}
+            )
+            response.raise_for_status()
+            drops_response = response.json()
+            print(f"Retrieved {len(drops_response.get('drops', []))} drops from stream")
+            print(f"Has more: {drops_response.get('has_more')}")
+            print(f"Total count: {drops_response.get('total_count')}")
+            
+            state.update({"last_step": "test_get_drops"})
+            save_state(state)
+            print("Get drops test completed.\n")
+
         print("--- Full workflow test completed successfully! ---")
 
     except requests.exceptions.RequestException as e:
@@ -190,10 +285,21 @@ def test_full_workflow():
 
 
 if __name__ == "__main__":
-    # If --reset is passed, delete the state file to start from scratch
+    # Determine environment
+    if "--live" in sys.argv:
+        set_environment("live")
+    else:
+        set_environment("test")
+
+    # Handle command-line flags
+    if "--logs" in sys.argv:
+        dump_server_logs()
+        sys.exit(0)
+
     if "--reset" in sys.argv and os.path.exists(STATE_FILE):
         os.remove(STATE_FILE)
         print("Test state has been reset. Starting from the beginning.")
+
     test_full_workflow()
 
 

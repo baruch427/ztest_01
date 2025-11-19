@@ -1,11 +1,12 @@
 {
-    "creator_id": "user_ce29a1ba-b4f5-4095-97b0-20a7dff01673",
-    "pool_id": "b6dfc474-09e3-4cd8-8a96-4b649eb08b96",
-    "last_step": "validate_drops",
-    "stream_id": "7e20fcd7-ac49-4c46-a381-502173267405",
+    "creator_id": "user_1aa18209-e7ad-49d7-a879-49b0316db376",
+    "user_id": "user_525ddd50-e992-4c40-952e-6f78cc53482e",
+    "pool_id": "9c3dcb52-ff01-47b2-b97e-a4ee291840cf",
+    "last_step": "test_get_drops",
+    "stream_id": "109fd0c9-a91c-4983-9c5c-91345c19fd99",
     "drop_ids": [
-        "ceb19943-7dce-40d0-96f7-4a6fffa3e913",
-        "1714c0dc-13e3-433c-afec-ff981c7886b7",
-        "5b652716-a082-4794-a120-c666690cf8f8"
+        "a9d4d3d0-d273-4d68-9729-23f53349d85a",
+        "e687f141-1e1f-4483-bd23-de94109b00cf",
+        "6aea8d98-1f8c-4133-bcb6-f6374461d2b8"
     ]
 }

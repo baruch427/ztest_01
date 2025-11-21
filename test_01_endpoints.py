@@ -73,14 +73,21 @@ def dump_server_logs():
 
 
 def test_full_workflow():
-    """
-    Tests the full workflow, resuming from the last saved state.
-    """
+    """Runs the full API workflow, resuming from the last saved state."""
     # Load previous state or initialize a new one
     state = load_state()
     pool_id = state.get("pool_id")
     stream_id = state.get("stream_id")
+    drop_records = state.get("drop_records")
     drop_ids = state.get("drop_ids", [])
+    if not drop_records and drop_ids:
+        # Backwards compatibility for older state files
+        drop_records = [
+            {"drop_id": d_id, "placement_id": None}
+            for d_id in drop_ids
+        ]
+    elif not drop_records:
+        drop_records = []
     last_step = state.get("last_step", "")
     creator_id = state.get("creator_id", generate_creator_id())
     user_id = state.get("user_id", generate_creator_id())
@@ -96,22 +103,75 @@ def test_full_workflow():
         state["user_id"] = user_id
         save_state(state)
 
+    def refresh_drop_records_from_server():
+        """Fetch drop records (with placement IDs) and persist them."""
+        nonlocal drop_records
+        if not stream_id:
+            return
+        response = requests.get(
+            f"{API_V1_URL}/streams/{stream_id}/drops",
+            params={"limit": 50}
+        )
+        response.raise_for_status()
+        drops_payload = response.json().get("drops", [])
+        if not drops_payload:
+            return
+        drop_records = [
+            {
+                "drop_id": d["drop_id"],
+                "placement_id": d.get("placement_id"),
+            }
+            for d in drops_payload
+        ]
+        state["drop_records"] = drop_records
+        state["drop_ids"] = [d["drop_id"] for d in drop_records]
+        save_state(state)
+
+    def get_placement_for_drop(target_drop_id):
+        """Ensures we have a placement ID for the given drop."""
+        for record in drop_records:
+            if (
+                record["drop_id"] == target_drop_id
+                and record.get("placement_id")
+            ):
+                return record["placement_id"]
+        refresh_drop_records_from_server()
+        for record in drop_records:
+            if (
+                record["drop_id"] == target_drop_id
+                and record.get("placement_id")
+            ):
+                return record["placement_id"]
+        return None
+
     try:
-        # Step 0: Health Check (always run)
-        print("--- 0. Checking server health ---")
+        # Step 0: Root Endpoint (always run)
+        print("--- 0. Checking root endpoint ---")
+        response = requests.get(f"{BASE_URL}/")
+        response.raise_for_status()
+        root_message = response.json().get("message", "No message returned")
+        print(f"Root endpoint healthy: {root_message}\n")
+
+        # Step 1: Health Check (always run)
+        print("--- 1. Checking server health ---")
         response = requests.get(f"{BASE_URL}/health")
         response.raise_for_status()
         health_data = response.json()
-        start_time = datetime.fromisoformat(health_data["start_time_utc"].replace("Z", "+00:00"))
-        server_time = datetime.fromisoformat(health_data["server_time_utc"].replace("Z", "+00:00"))
+        start_ts = health_data["start_time_utc"].replace("Z", "+00:00")
+        server_ts = health_data["server_time_utc"].replace("Z", "+00:00")
+        start_time = datetime.fromisoformat(start_ts)
+        server_time = datetime.fromisoformat(server_ts)
         uptime_minutes = (server_time - start_time).total_seconds() / 60
         print(f"Server is OK. Uptime: {uptime_minutes:.2f} minutes.\n")
 
-        # Step 1: Create and Validate Pool
+        # Step 2: Create and Validate Pool
         if not pool_id:
             print("--- 1. Creating a new pool ---")
             pool_data = {
-                "pool_content": {"title": "Test Pool", "description": "A test pool."},
+                "pool_content": {
+                    "title": "Test Pool",
+                    "description": "A test pool.",
+                },
                 "creator_id": creator_id,
             }
             response = requests.post(f"{API_V1_URL}/pools", json=pool_data)
@@ -132,18 +192,24 @@ def test_full_workflow():
             save_state(state)
             print(f"Pool {pool_id} validated successfully.\n")
 
-        # Step 2: Create and Validate Stream
+        # Step 3: Create and Validate Stream
         if not stream_id:
             print("--- 3. Creating a new stream ---")
             stream_data = {
-                "stream_content": {"title": "Test Stream", "description": "A test stream."},
+                "stream_content": {
+                    "title": "Test Stream",
+                    "description": "A test stream.",
+                },
                 "pool_id": pool_id,
                 "creator_id": creator_id,
             }
             response = requests.post(f"{API_V1_URL}/streams", json=stream_data)
             response.raise_for_status()
             stream_id = response.json()["stream_id"]
-            state.update({"stream_id": stream_id, "last_step": "create_stream"})
+            state.update({
+                "stream_id": stream_id,
+                "last_step": "create_stream",
+            })
             save_state(state)
             print(f"Stream created with ID: {stream_id}\n")
         else:
@@ -158,8 +224,8 @@ def test_full_workflow():
             save_state(state)
             print(f"Stream {stream_id} validated successfully.\n")
 
-        # Step 3: Add and Validate Drops
-        if len(drop_ids) < 3:
+        # Step 4: Add and Validate Drops
+        if len(drop_records) < 3:
             print(f"--- 5. Adding 3 drops to stream {stream_id} ---")
             drops_data = {
                 "drops": [
@@ -169,11 +235,25 @@ def test_full_workflow():
                 ],
                 "creator_id": creator_id,
             }
-            response = requests.post(f"{API_V1_URL}/streams/{stream_id}/drops", json=drops_data)
+            response = requests.post(
+                f"{API_V1_URL}/streams/{stream_id}/drops",
+                json=drops_data,
+            )
             response.raise_for_status()
             new_drops = response.json().get("drops", [])
-            drop_ids = [d["drop_id"] for d in new_drops]
-            state.update({"drop_ids": drop_ids, "last_step": "add_drops"})
+            drop_records = [
+                {
+                    "drop_id": d["drop_id"],
+                    "placement_id": d.get("placement_id"),
+                }
+                for d in new_drops
+            ]
+            drop_ids = [record["drop_id"] for record in drop_records]
+            state.update({
+                "drop_records": drop_records,
+                "drop_ids": drop_ids,
+                "last_step": "add_drops"
+            })
             save_state(state)
             print(f"3 drops added with IDs: {drop_ids}\n")
         else:
@@ -182,35 +262,45 @@ def test_full_workflow():
 
         if last_step != "validate_drops":
             print("--- 6. Validating individual drops ---")
-            for drop_id in drop_ids:
-                response = requests.get(f"{API_V1_URL}/drops/{drop_id}")
+            for drop_record in drop_records:
+                response = requests.get(
+                    f"{API_V1_URL}/drops/{drop_record['drop_id']}"
+                )
                 response.raise_for_status()
-                print(f"Drop {drop_id} validated successfully.")
+                print(f"Drop {drop_record['drop_id']} validated successfully.")
             state.update({"last_step": "validate_drops"})
             save_state(state)
             print("All drops validated.\n")
 
-        # Step 4: Test User Progress Endpoints
+        # Step 5: Test User Progress Endpoints
         if last_step != "test_user_progress":
             print("--- 7. Testing user progress endpoints ---")
             
-            # First, get session sync (should have no history initially)
-            print("Getting initial session sync...")
+            # First, get user river (should have limited history initially)
+            print("Getting initial user river...")
             response = requests.get(
-                f"{API_V1_URL}/user/session-sync",
+                f"{API_V1_URL}/user/river",
+                params={"limit": 30},
                 headers={"X-User-Id": user_id}
             )
             response.raise_for_status()
-            session_data = response.json()
-            print(f"Session sync response: {session_data}")
+            river_data = response.json()
+            initial_records = len(river_data.get("records", []))
+            print(f"Initial river records: {initial_records}")
             
             # Update user progress
             print("Updating user progress...")
+            target_drop_id = drop_ids[1] if len(drop_ids) > 1 else drop_ids[0]
+            placement_id = get_placement_for_drop(target_drop_id)
+            if not placement_id:
+                raise RuntimeError(
+                    "Could not determine placement_id for progress update."
+                )
             progress_data = {
                 "pool_id": pool_id,
                 "stream_id": stream_id,
-                "drop_id": drop_ids[1] if len(drop_ids) > 1 else drop_ids[0],
-                "placement_id": "test_placement_id"
+                "drop_id": target_drop_id,
+                "placement_id": placement_id
             }
             response = requests.post(
                 f"{API_V1_URL}/user/progress",
@@ -220,47 +310,41 @@ def test_full_workflow():
             response.raise_for_status()
             print("User progress updated successfully.")
             
-            # Get session sync again (should now have history)
-            print("Getting updated session sync...")
+            # Get user river again (should now reflect the activity)
+            print("Getting updated user river...")
             response = requests.get(
-                f"{API_V1_URL}/user/session-sync",
+                f"{API_V1_URL}/user/river",
+                params={"limit": 30},
                 headers={"X-User-Id": user_id}
             )
             response.raise_for_status()
-            updated_session = response.json()
-            print(f"Updated session sync: {updated_session}")
+            updated_river = response.json()
+            touched_streams = [
+                r.get("stream_id") for r in updated_river.get("records", [])
+            ]
+            if stream_id not in touched_streams:
+                warning_msg = (
+                    "Warning: Updated river does not include the stream we just touched."
+                )
+                print(warning_msg)
+            else:
+                print("User river reflects the recent activity.")
             
             state.update({"last_step": "test_user_progress"})
             save_state(state)
             print("User progress tests completed.\n")
 
-        # Step 5: Test River Feed
-        if last_step != "test_river_feed":
-            print("--- 8. Testing river feed endpoint ---")
-            response = requests.get(
-                f"{API_V1_URL}/pools/{pool_id}/river",
-                headers={"X-User-Id": user_id},
-                params={"limit": 10}
-            )
-            response.raise_for_status()
-            river_data = response.json()
-            print(f"River feed returned {len(river_data.get('streams', []))} streams")
-            print(f"River feed response: {river_data}")
-            
-            state.update({"last_step": "test_river_feed"})
-            save_state(state)
-            print("River feed test completed.\n")
-
-        # Step 6: Test Get Drops in Stream
+        # Step 5: Test Get Drops in Stream
         if last_step != "test_get_drops":
-            print("--- 9. Testing get drops in stream endpoint ---")
+            print("--- 8. Testing get drops in stream endpoint ---")
             response = requests.get(
                 f"{API_V1_URL}/streams/{stream_id}/drops",
                 params={"limit": 10}
             )
             response.raise_for_status()
             drops_response = response.json()
-            print(f"Retrieved {len(drops_response.get('drops', []))} drops from stream")
+            drop_count = len(drops_response.get("drops", []))
+            print(f"Retrieved {drop_count} drops from stream")
             print(f"Has more: {drops_response.get('has_more')}")
             print(f"Total count: {drops_response.get('total_count')}")
             
@@ -271,7 +355,8 @@ def test_full_workflow():
         print("--- Full workflow test completed successfully! ---")
 
     except requests.exceptions.RequestException as e:
-        print(f"\n!!! An error occurred during step: '{state.get('last_step', 'initial')}' !!!")
+        last_step_name = state.get("last_step", "initial")
+        print(f"\n!!! An error occurred during step: '{last_step_name}' !!!")
         print(f"Error: {e}")
         if e.response:
             print(f"Response status code: {e.response.status_code}")

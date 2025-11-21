@@ -1,12 +1,26 @@
 {
-    "creator_id": "user_1aa18209-e7ad-49d7-a879-49b0316db376",
-    "user_id": "user_525ddd50-e992-4c40-952e-6f78cc53482e",
-    "pool_id": "9c3dcb52-ff01-47b2-b97e-a4ee291840cf",
+    "creator_id": "user_c42bacb6-fdca-4043-9959-f537c32fb4a4",
+    "user_id": "user_04f95dd0-6101-46ec-b58d-a4dd80510d56",
+    "pool_id": "e3ef6279-562a-4729-90f2-1405dd46ca6c",
     "last_step": "test_get_drops",
-    "stream_id": "109fd0c9-a91c-4983-9c5c-91345c19fd99",
+    "stream_id": "2ef6d4c3-f3c4-489b-a776-dab151c3d440",
+    "drop_records": [
+        {
+            "drop_id": "e44f12e6-95ba-4b8d-b829-753dede89cb3",
+            "placement_id": "34d8866a-42ef-4e5c-9c61-f0ed75bd8ae1"
+        },
+        {
+            "drop_id": "ece6e97e-d986-4734-93a4-db42186c79e8",
+            "placement_id": "3349c7d0-f979-4cfa-9312-b4de2838d934"
+        },
+        {
+            "drop_id": "12f342e9-af2a-4df5-a862-f7f3f379d91f",
+            "placement_id": "1ab5e51a-7516-47a8-959d-552186a1f303"
+        }
+    ],
     "drop_ids": [
-        "a9d4d3d0-d273-4d68-9729-23f53349d85a",
-        "e687f141-1e1f-4483-bd23-de94109b00cf",
-        "6aea8d98-1f8c-4133-bcb6-f6374461d2b8"
+        "e44f12e6-95ba-4b8d-b829-753dede89cb3",
+        "ece6e97e-d986-4734-93a4-db42186c79e8",
+        "12f342e9-af2a-4df5-a862-f7f3f379d91f"
     ]
 }

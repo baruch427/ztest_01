@@ -1,8 +1,21 @@
 # Wisdom Pool Server API
 
+**Version:** 1.3
+**Date:** November 19, 2025
+
 This document outlines the API endpoints for the Wisdom Pool Server.
 
 ## Monitoring
+
+- **Endpoint:** `GET /`
+- **Description:** Returns a welcome message.
+- **Arguments:** None
+- **Return Value:** `JSON`
+  ```json
+  {
+    "message": "Server is running"
+  }
+  ```
 
 ### Health Check
 
@@ -168,31 +181,37 @@ This document outlines the API endpoints for the Wisdom Pool Server.
 - **Arguments:**
   - **Path Parameters:**
     - `stream_id`: (string) The ID of the stream to add the drop to.
-  - **Request Body:**
-    - `drops`: `DropContent` or `List[DropContent]`.
+  - **Request Body:** A JSON object with the following fields:
+    - `drops`: A `DropContent` object for a single drop, or a `List[DropContent]` for multiple drops.
+    - `creator_id`: (string) The ID of the user creating the drop(s).
       ```json
-      // Single drop
+      // Single drop example
       {
-        "title": "What is superposition?",
-        "text": "Superposition is a fundamental principle of quantum mechanics.",
-        "images": ["https://example.com/superposition.jpg"],
-        "type": "text"
+        "drops": {
+          "title": "What is superposition?",
+          "text": "Superposition is a fundamental principle of quantum mechanics.",
+          "images": ["https://example.com/superposition.jpg"],
+          "type": "text"
+        },
+        "creator_id": "user_abc"
       }
       ```
       ```json
-      // Multiple drops
-      [
-        {
-          "title": "First Drop",
-          "text": "This is the first drop."
-        },
-        {
-          "title": "Second Drop",
-          "text": "This is the second drop."
-        }
-      ]
+      // Multiple drops example
+      {
+        "drops": [
+          {
+            "title": "First Drop",
+            "text": "This is the first drop."
+          },
+          {
+            "title": "Second Drop",
+            "text": "This is the second drop."
+          }
+        ],
+        "creator_id": "user_abc"
+      }
       ```
-    - `creator_id`: (string) The ID of the user creating the drop.
 - **Return Value:** `AddDropResponse` (for single drop) or `AddDropsResponse` (for multiple drops)
   ```json
   // Single drop response
@@ -299,3 +318,48 @@ This document outlines the API endpoints for the Wisdom Pool Server.
     }
   }
   ```
+
+---
+
+## User State & Progress
+
+### Update User Progress
+
+- **Endpoint:** `POST /api/v1/user/progress`
+- **Description:** Idempotent heartbeat to record where the user is currently looking. This updates both the global `last_active_context` and the specific `stream_history` entry for the given stream.
+- **Auth:** Required (uses `get_current_user_id` dependency)
+- **Request Body:**
+  ```json
+  {
+    "pool_id": "string",
+    "stream_id": "string",
+    "drop_id": "string",
+    "placement_id": "string"
+  }
+  ```
+- **Return Value:** `204 No Content`
+
+### Get User River
+
+- **Endpoint:** `GET /api/v1/user/river`
+- **Description:** Returns the user's recent reading history ("river") ordered by the last time each stream was touched, newest first, capped at 30 records.
+- **Auth:** Required (uses `get_current_user_id` dependency)
+- **Query Parameters:**
+  - `limit` (integer, optional, default: 30, max: 30) — number of records to return.
+- **Return Value:** `RiverResponse`
+  ```json
+  {
+    "records": [
+      {
+        "stream_id": "stream_456",
+        "last_read_drop_id": "drop_abc",
+        "last_read_placement_id": "placement_123",
+        "updated_at": "2025-11-20T18:25:43.511Z"
+      }
+    ]
+  }
+  ```
+
+---
+
+## Data Models

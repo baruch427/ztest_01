@@ -6,7 +6,7 @@ import uuid
 # --- Configuration ---
 URLS = {
     "test": "http://localhost:8000",
-    "live": "https://wisdom-pool-serve-02.firebaseapp.com",
+    "live": "https://wisdom-pool-server-3473lz5ika-nw.a.run.app",
 }
 
 BASE_URL = ""
@@ -248,34 +248,22 @@ def create_test_data():
     print(f"Simulated user reading progress for user: {TEST_USER_ID}")
     
     # Test session-sync and river endpoints
-    print(f"\n--- Testing session-sync endpoint ---")
+    print(f"\n--- Testing user river endpoint ---")
     response = requests.get(
-        f"{API_V1_URL}/user/session-sync",
+        f"{API_V1_URL}/user/river",
+        params={"limit": 30},
         headers={"X-User-Id": TEST_USER_ID}
     )
     response.raise_for_status()
-    session_data = response.json()
-    print(f"Session sync successful!")
-    print(f"Last active context: {session_data.get('last_active_context')}")
-    print(f"Has history: {session_data.get('has_history')}")
-    
-    print(f"\n--- Testing river feed endpoint ---")
-    response = requests.get(
-        f"{API_V1_URL}/pools/{pool_id}/river",
-        headers={"X-User-Id": TEST_USER_ID},
-        params={"limit": 10}
-    )
-    response.raise_for_status()
     river_data = response.json()
-    print(f"River feed successful!")
-    print(f"Returned {len(river_data.get('streams', []))} streams")
-    for stream in river_data.get('streams', []):
-        user_progress = stream.get('user_progress', {})
-        print(f"  - {stream['content']['title']}: "
-              f"last_read={user_progress.get('last_read_placement_id', 'None')}, "
-              f"completed={user_progress.get('is_completed', False)}")
+    river_records = river_data.get("records", [])
+    print("User river fetched successfully!")
+    print(f"Total records returned: {len(river_records)}")
+    if river_records:
+        latest_record = river_records[0]
+        print(f"Most recent stream: {latest_record.get('stream_id')}")
     
-    print(f"\n--- All tests passed! ---")
+    print("\n--- All tests passed! ---")
 
 
 def main():
